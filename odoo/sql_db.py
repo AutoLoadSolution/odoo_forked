@@ -44,14 +44,18 @@ def undecimalize(value, cr):
         return None
     return float(value)
 
-DECIMAL_TO_FLOAT_TYPE = psycopg2.extensions.new_type((1700,), 'float', undecimalize)
+
+DECIMAL_TO_FLOAT_TYPE = psycopg2.extensions.new_type(
+    (1700,), 'float', undecimalize)
 psycopg2.extensions.register_type(DECIMAL_TO_FLOAT_TYPE)
-psycopg2.extensions.register_type(psycopg2.extensions.new_array_type((1231,), 'float[]', DECIMAL_TO_FLOAT_TYPE))
+psycopg2.extensions.register_type(psycopg2.extensions.new_array_type(
+    (1231,), 'float[]', DECIMAL_TO_FLOAT_TYPE))
 
 _logger = logging.getLogger(__name__)
 _logger_conn = _logger.getChild("connection")
 
-real_time = time.time.__call__  # ensure we have a non patched time for query times when using freezegun
+# ensure we have a non patched time for query times when using freezegun
+real_time = time.time.__call__
 
 re_from = re.compile(r'\bfrom\s+"?([a-zA-Z_0-9]+)\b', re.IGNORECASE)
 re_into = re.compile(r'\binto\s+"?([a-zA-Z_0-9]+)\b', re.IGNORECASE)
@@ -94,6 +98,7 @@ class Savepoint:
 
     :param BaseCursor cr: the cursor to execute the `SAVEPOINT` queries on
     """
+
     def __init__(self, cr):
         self.name = str(uuid.uuid1())
         self._cr = cr
@@ -346,7 +351,8 @@ class Cursor(BaseCursor):
 
         if params and not isinstance(params, (tuple, list, dict)):
             # psycopg2's TypeError is not clear if you mess up the params
-            raise ValueError("SQL query parameters should be a tuple, list or dict; got %r" % (params,))
+            raise ValueError(
+                "SQL query parameters should be a tuple, list or dict; got %r" % (params,))
 
         start = real_time()
         try:
@@ -354,12 +360,14 @@ class Cursor(BaseCursor):
             res = self._obj.execute(query, params)
         except Exception as e:
             if log_exceptions:
-                _logger.error("bad query: %s\nERROR: %s", self._obj.query or query, e)
+                _logger.error("bad query: %s\nERROR: %s",
+                              self._obj.query or query, e)
             raise
         finally:
             delay = real_time() - start
             if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("[%.3f ms] query: %s", 1000 * delay, self._format(query, params))
+                _logger.debug("[%.3f ms] query: %s", 1000 *
+                              delay, self._format(query, params))
 
         # simple query count is always computed
         self.sql_log_count += 1
@@ -409,6 +417,7 @@ class Cursor(BaseCursor):
 
         if not _logger.isEnabledFor(logging.DEBUG):
             return
+
         def process(type):
             sqllogs = {'from': self.sql_from_log, 'into': self.sql_into_log}
             sum = 0
@@ -421,7 +430,8 @@ class Cursor(BaseCursor):
                     sum += r[1][1]
                 sqllogs[type].clear()
             sum = timedelta(microseconds=sum)
-            _logger.debug("SUM %s:%s/%d [%d]", type, sum, self.sql_log_count, sql_counter)
+            _logger.debug("SUM %s:%s/%d [%d]", type,
+                          sum, self.sql_log_count, sql_counter)
             sqllogs[type].clear()
         process('from')
         process('into')
@@ -471,7 +481,8 @@ class Cursor(BaseCursor):
             self._cnx.leaked = True
         else:
             chosen_template = tools.config['db_template']
-            keep_in_pool = self.dbname not in ('template0', 'template1', 'postgres', chosen_template)
+            keep_in_pool = self.dbname not in (
+                'template0', 'template1', 'postgres', chosen_template)
             self.__pool.give_back(self._cnx, keep_in_pool=keep_in_pool)
 
     def commit(self):
@@ -553,7 +564,8 @@ class TestCursor(BaseCursor):
         self._lock.acquire()
         last_cursor = self._cursors_stack and self._cursors_stack[-1]
         if last_cursor and last_cursor.readonly and not readonly and last_cursor._savepoint:
-            raise Exception('Opening a read/write test cursor from a readonly one')
+            raise Exception(
+                'Opening a read/write test cursor from a readonly one')
         self._cursors_stack.append(self)
         # in order to simulate commit and rollback, the cursor maintains a
         # savepoint at its last commit, the savepoint is created lazily
@@ -567,7 +579,8 @@ class TestCursor(BaseCursor):
             self._savepoint = Savepoint(self._cursor._obj)
             if self.readonly:
                 # this will simulate a readonly connection
-                self._cursor._obj.execute('SET TRANSACTION READ ONLY')  # use _obj to avoid impacting query count and profiler.
+                # use _obj to avoid impacting query count and profiler.
+                self._cursor._obj.execute('SET TRANSACTION READ ONLY')
 
     def _check(self, operation):
         if self.current_test:
@@ -588,7 +601,8 @@ class TestCursor(BaseCursor):
                 self._closed = True
                 tos = self._cursors_stack.pop()
                 if tos is not self:
-                    _logger.warning("Found different un-closed cursor when trying to close %s: %s", self, tos)
+                    _logger.warning(
+                        "Found different un-closed cursor when trying to close %s: %s", self, tos)
                 self._lock.release()
 
     def commit(self):
@@ -648,6 +662,7 @@ class ConnectionPool(object):
         The connections are *not* automatically closed. Only a close_db()
         can trigger that.
     """
+
     def __init__(self, maxconn=64, readonly=False):
         self._connections = []
         self._maxconn = max(maxconn, 1)
@@ -684,7 +699,8 @@ class ConnectionPool(object):
                 cnx.close()
             if cnx.closed:
                 self._connections.pop(i)
-                self._debug('Removing closed connection at index %d: %r', i, cnx.dsn)
+                self._debug(
+                    'Removing closed connection at index %d: %r', i, cnx.dsn)
                 continue
             if getattr(cnx, 'leaked', False):
                 delattr(cnx, 'leaked')
@@ -696,13 +712,15 @@ class ConnectionPool(object):
                 try:
                     cnx.reset()
                 except psycopg2.OperationalError:
-                    self._debug('Cannot reset connection at index %d: %r', i, cnx.dsn)
+                    self._debug(
+                        'Cannot reset connection at index %d: %r', i, cnx.dsn)
                     # psycopg2 2.4.4 and earlier do not allow closing a closed connection
                     if not cnx.closed:
                         cnx.close()
                     continue
                 self._connections[i][1] = True
-                self._debug('Borrow existing connection to %r at index %d', cnx.dsn, i)
+                self._debug(
+                    'Borrow existing connection to %r at index %d', cnx.dsn, i)
 
                 return cnx
 
@@ -713,7 +731,8 @@ class ConnectionPool(object):
                     self._connections.pop(i)
                     if not cnx.closed:
                         cnx.close()
-                    self._debug('Removing old connection at index %d: %r', i, cnx.dsn)
+                    self._debug(
+                        'Removing old connection at index %d: %r', i, cnx.dsn)
                     break
             else:
                 # note: this code is called only if the for loop has completed (no break)
@@ -727,7 +746,8 @@ class ConnectionPool(object):
             _logger.info('Connection to the database failed')
             raise
         self._connections.append([result, True, 0])
-        self._debug('Create new connection backend PID %d', result.get_backend_pid())
+        self._debug('Create new connection backend PID %d',
+                    result.get_backend_pid())
 
         return result
 
@@ -760,7 +780,7 @@ class ConnectionPool(object):
                 count += 1
         if count:
             _logger.info('%r: Closed %d connections %s', self, count,
-                        (dsn and last and 'to %r' % last.dsn) or '')
+                         (dsn and last and 'to %r' % last.dsn) or '')
 
     def _dsn_equals(self, dsn1, dsn2):
         alias_keys = {'dbname': 'database'}
@@ -776,6 +796,7 @@ class ConnectionPool(object):
 class Connection(object):
     """ A lightweight instance of a connection to postgres
     """
+
     def __init__(self, pool, dbname, dsn):
         self.__dbname = dbname
         self.__dsn = dsn
@@ -798,6 +819,7 @@ class Connection(object):
     def __bool__(self):
         raise NotImplementedError()
 
+
 def connection_info_for(db_or_uri, readonly=False):
     """ parse the given `db_or_uri` and return a 2-tuple (dbname, connection_params)
 
@@ -813,7 +835,8 @@ def connection_info_for(db_or_uri, readonly=False):
     """
     if 'ODOO_PGAPPNAME' in os.environ:
         # Using manual string interpolation for security reason and trimming at default NAMEDATALEN=63
-        app_name = os.environ['ODOO_PGAPPNAME'].replace('{pid}', str(os.getpid()))[0:63]
+        app_name = os.environ['ODOO_PGAPPNAME'].replace(
+            '{pid}', str(os.getpid()))[0:63]
     else:
         app_name = "odoo-%d" % os.getpid()
     if db_or_uri.startswith(('postgresql://', 'postgres://')):
@@ -834,11 +857,12 @@ def connection_info_for(db_or_uri, readonly=False):
             cfg = tools.config.get('db_replica_' + p, cfg)
         if cfg:
             connection_info[p] = cfg
-
     return db_or_uri, connection_info
+
 
 _Pool = None
 _Pool_readonly = None
+
 
 def db_connect(to, allow_uri=False, readonly=False):
     global _Pool, _Pool_readonly  # noqa: PLW0603 (global-statement)
@@ -854,12 +878,14 @@ def db_connect(to, allow_uri=False, readonly=False):
         raise ValueError('URI connections not allowed')
     return Connection(_Pool_readonly if readonly else _Pool, db, info)
 
+
 def close_db(db_name):
     """ You might want to call odoo.modules.registry.Registry.delete(db_name) along this function."""
     if _Pool:
         _Pool.close_all(connection_info_for(db_name)[1])
     if _Pool_readonly:
         _Pool_readonly.close_all(connection_info_for(db_name)[1])
+
 
 def close_all():
     if _Pool:
