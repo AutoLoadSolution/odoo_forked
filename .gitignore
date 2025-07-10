@@ -50,4 +50,12 @@ package.json
 /share/
 /src/
 
-env/
+# Python 가상환경 무시
+autoload_311/
+
+# __pycache__나 기타 Python 빌드 관련 파일 무시
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+debian/odoo.conf
